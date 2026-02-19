@@ -42,7 +42,9 @@ def get_stock_price(ticker: str) -> Optional[Dict[str, Any]]:
         set_cached(stock_price_cache, cache_key, result)
         return result
     except Exception as e:
+        import traceback
         print(f"Error fetching price for {ticker}: {e}")
+        print(f"Traceback: {traceback.format_exc()}")
         return None
 
 
