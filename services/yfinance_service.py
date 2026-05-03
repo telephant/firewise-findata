@@ -551,15 +551,25 @@ def search_symbols(
     Args:
         query: Search term (ticker or company name)
         region: Filter by region (US, SG, HK, UK, JP, CN, AU, CA, DE, FR)
-        quote_type: Filter by type (stock, etf, crypto, index, currency, fund)
+        quote_type: Filter by type (stock, etf, crypto, index, currency, fund) - can be comma-separated
         limit: Max results (default 10, max 20)
 
     Returns:
         List of matching symbols with metadata
     """
     try:
-        # Use yfinance search
-        search = yf.Search(query, max_results=min(limit * 3, 50))  # Fetch more to filter
+        # Use yf.Lookup for single type searches (better results for short queries)
+        # For multi-type (e.g., "stock,etf"), use yf.Search with filtering
+        if quote_type and ',' not in quote_type:
+            return _lookup_by_type(query, quote_type, limit)
+
+        # Parse multiple types if provided
+        allowed_types = None
+        if quote_type:
+            allowed_types = set(t.strip() for t in quote_type.split(','))
+
+        # Use yf.Search for general/region-filtered/multi-type searches
+        search = yf.Search(query, max_results=min(limit * 3, 50))
 
         results = []
 
@@ -572,8 +582,8 @@ def search_symbols(
             # Map quote type
             mapped_type = QUOTE_TYPE_MAP.get(yf_quote_type, "other")
 
-            # Filter by quote type if specified
-            if quote_type and mapped_type != quote_type:
+            # Filter by type(s) if specified
+            if allowed_types and mapped_type not in allowed_types:
                 continue
 
             # Filter by region if specified
@@ -606,6 +616,60 @@ def search_symbols(
     except Exception as e:
         print(f"Error searching symbols for '{query}': {e}")
         return []
+
+
+def _lookup_by_type(query: str, quote_type: str, limit: int) -> List[Dict[str, Any]]:
+    """
+    Use yf.Lookup for type-specific searches.
+    This provides better results for crypto, etf, etc. even with short queries.
+    """
+    import pandas as pd
+
+    def safe_str(val):
+        """Convert pandas value to string, handling NaN."""
+        if pd.isna(val):
+            return None
+        return str(val) if val is not None else None
+
+    lookup = yf.Lookup(query)
+
+    # Map our type to Lookup method
+    type_method_map = {
+        "crypto": "get_cryptocurrency",
+        "etf": "get_etf",
+        "stock": "get_stock",
+        "index": "get_index",
+        "currency": "get_currency",
+        "fund": "get_mutualfund",
+        "future": "get_future",
+    }
+
+    method_name = type_method_map.get(quote_type)
+    if not method_name or not hasattr(lookup, method_name):
+        # Fallback to get_all and filter
+        df = lookup.get_all(count=limit * 3)
+    else:
+        method = getattr(lookup, method_name)
+        df = method(count=limit)
+
+    if df is None or df.empty:
+        return []
+
+    results = []
+    for symbol, row in df.iterrows():
+        results.append({
+            "symbol": symbol,
+            "short_name": safe_str(row.get("shortName")),
+            "long_name": safe_str(row.get("longName")),
+            "quote_type": quote_type,
+            "exchange": safe_str(row.get("exchange")),
+            "exchange_display": safe_str(row.get("exchDisp")),
+            "sector": safe_str(row.get("sector")),
+            "industry": safe_str(row.get("industry")),
+            "score": float(row.get("score", 0)) if not pd.isna(row.get("score", 0)) else 0.0,
+        })
+
+    return results[:limit]
 
 
 def get_cagr(ticker: str) -> Optional[Dict[str, Any]]:
