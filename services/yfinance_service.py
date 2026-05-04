@@ -159,6 +159,7 @@ def get_dividends(ticker: str, year: Optional[int] = None) -> Optional[Dict[str,
                 "dividends": [],
                 "annual_total_per_share": 0,
                 "currency": currency,
+                "next_ex_date": None,
             }
             set_cached(dividend_cache, cache_key, result)
             return result
@@ -254,6 +255,16 @@ def get_dividends(ticker: str, year: Optional[int] = None) -> Optional[Dict[str,
 
         annual_total = sum(d["amount"] for d in dividends)
 
+        # Get next ex-dividend date from Yahoo Finance info (Unix timestamp → ISO date)
+        next_ex_date = None
+        try:
+            info = stock.info
+            ex_ts = info.get("exDividendDate")
+            if ex_ts and ex_ts > 0:
+                next_ex_date = datetime.utcfromtimestamp(ex_ts).strftime('%Y-%m-%d')
+        except Exception:
+            pass
+
         result = {
             "ticker": ticker.upper(),
             "year": year,
@@ -263,6 +274,7 @@ def get_dividends(ticker: str, year: Optional[int] = None) -> Optional[Dict[str,
             "dividends": dividends,
             "annual_total_per_share": round(annual_total, 6),
             "currency": currency,
+            "next_ex_date": next_ex_date,
         }
 
         set_cached(dividend_cache, cache_key, result)

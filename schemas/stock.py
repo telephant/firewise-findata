@@ -49,6 +49,7 @@ class DividendData(BaseModel):
     dividends: List[DividendEvent] = []
     annual_total_per_share: float = 0
     currency: Optional[str] = "USD"
+    next_ex_date: Optional[str] = None  # ISO date string, e.g. "2025-06-15"
 
 
 class DividendRequest(BaseModel):
