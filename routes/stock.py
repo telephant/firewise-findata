@@ -9,7 +9,7 @@ from schemas.stock import (
     StockPrice, StockPriceRequest, StockPriceResponse,
     CompanyInfo, HistoricalPriceResponse,
     CAGRResponse, CAGRBatchRequest, CAGRBatchResponse,
-    PriceAtDateResponse
+    PriceAtDateResponse, PriceAtTimeResponse
 )
 from services import yfinance_service
 import config
@@ -143,6 +143,26 @@ async def get_cagr_batch(request: CAGRBatchRequest):
         data={k: CAGRResponse(**v) for k, v in results.items()},
         errors=errors if errors else None
     )
+
+
+@router.get("/price-at-time/{ticker}", response_model=PriceAtTimeResponse)
+async def get_price_at_time(
+    ticker: str,
+    minutes_after_open: int = Query(default=0, ge=0, le=480, description="Minutes after market open (0 = open price)")
+):
+    """
+    Get stock price at a specific number of minutes after market open today.
+
+    - minutes_after_open=0: returns the open price
+    - minutes_after_open=N: returns price N minutes after open (using 1m intraday data)
+    """
+    result = yfinance_service.get_price_at_time(ticker.upper(), minutes_after_open)
+    if not result:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Could not fetch price at time for {ticker}"
+        )
+    return result
 
 
 @router.get("/price-at-date/{ticker}", response_model=PriceAtDateResponse)

@@ -158,3 +158,13 @@ class PriceAtDateResponse(BaseModel):
     currency: Optional[str] = "USD"
 
 
+# Price at time schema
+class PriceAtTimeResponse(BaseModel):
+    ticker: str
+    price: Optional[float] = None
+    reference: str  # "open", "delay", "fallback"
+    minutes_after_open: int
+    currency: Optional[str] = "USD"
+    timestamp: Optional[str] = None
+
+

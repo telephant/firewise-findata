@@ -760,6 +760,97 @@ def get_cagr(ticker: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+def get_price_at_time(ticker: str, minutes_after_open: int = 0) -> Optional[Dict[str, Any]]:
+    """
+    Get stock price at a specific number of minutes after market open today.
+
+    minutes_after_open == 0 → open price (from fast_info.open)
+    minutes_after_open == N → price of the N-th 1-minute bar after the first bar of the session
+
+    Args:
+        ticker: Stock ticker (yfinance format, e.g. "AAPL", "D05.SI", "0700.HK")
+        minutes_after_open: Minutes after market open (0 = open price)
+
+    Returns:
+        Dict with price and metadata, or None on error
+    """
+    try:
+        stock = yf.Ticker(ticker)
+        currency = _get_ticker_currency(stock)
+
+        if minutes_after_open == 0:
+            # Return today's open price directly from fast_info (no intraday fetch needed)
+            info = stock.fast_info
+            price = info.open
+            if price is None or (isinstance(price, float) and price != price):  # NaN check
+                price = info.last_price
+            return {
+                "ticker": ticker.upper(),
+                "price": float(price) if price else None,
+                "reference": "open",
+                "minutes_after_open": 0,
+                "currency": info.currency or currency,
+                "timestamp": datetime.now().isoformat(),
+            }
+
+        # Fetch today's 1-minute data
+        # Use period="1d" so yfinance returns bars in the exchange's local timezone.
+        hist = stock.history(period="1d", interval="1m")
+
+        if hist.empty:
+            # Market not open yet or holiday — fallback to last known price
+            info = stock.fast_info
+            return {
+                "ticker": ticker.upper(),
+                "price": float(info.last_price) if info.last_price else None,
+                "reference": "fallback",
+                "minutes_after_open": minutes_after_open,
+                "currency": info.currency or currency,
+                "timestamp": datetime.now().isoformat(),
+            }
+
+        # Filter to the most recent trading session.
+        # yfinance returns timezone-aware timestamps (exchange local TZ).
+        # Normalise to midnight in the same TZ, then pick the latest date present.
+        # This avoids the bug where datetime.now().date() (system-local) doesn't
+        # match the exchange-local date of the bars.
+        index_tz = hist.index.tz  # e.g. America/New_York, Asia/Singapore
+        if index_tz is not None:
+            # Get the most recent trading date in the exchange's timezone
+            latest_date = hist.index[-1].date()
+            session_bars = hist[hist.index.date == latest_date]
+        else:
+            session_bars = hist
+
+        if session_bars.empty:
+            session_bars = hist
+
+        # The first bar in the session is bar 0 (market open).
+        # Bar N = N minutes after open.
+        if len(session_bars) <= minutes_after_open:
+            # Requested minute hasn't arrived yet — use latest available bar
+            row = session_bars.iloc[-1]
+            actual_minutes = len(session_bars) - 1
+        else:
+            row = session_bars.iloc[minutes_after_open]
+            actual_minutes = minutes_after_open
+
+        price = float(row['Close']) if pd.notna(row['Close']) else None
+        ts = row.name.isoformat() if hasattr(row.name, 'isoformat') else datetime.now().isoformat()
+
+        return {
+            "ticker": ticker.upper(),
+            "price": price,
+            "reference": "delay",
+            "minutes_after_open": actual_minutes,
+            "currency": currency,
+            "timestamp": ts,
+        }
+    except Exception as e:
+        print(f"Error fetching price at time for {ticker}: {e}")
+        return None
+
+
 def get_price_at_date(ticker: str, year: int, month: int) -> Optional[Dict[str, Any]]:
     """
     Get the closing price at the end of a specific month
