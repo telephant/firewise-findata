@@ -19,6 +19,7 @@ class StockPrice(BaseModel):
     change: Optional[float] = None
     change_percent: Optional[float] = None
     timestamp: Optional[str] = None
+    quote_type: Optional[str] = None
 
 
 class StockPriceRequest(BaseModel):

@@ -24,6 +24,10 @@ def get_stock_price(ticker: str) -> Optional[Dict[str, Any]]:
         stock = yf.Ticker(ticker)
         info = stock.fast_info
 
+        _qt_map = {"EQUITY": "stock", "ETF": "etf", "FUTURE": "future", "CRYPTOCURRENCY": "crypto", "INDEX": "index", "CURRENCY": "currency", "MUTUALFUND": "fund"}
+        raw_quote_type = getattr(info, 'quote_type', None)
+        quote_type = _qt_map.get(raw_quote_type, None) if raw_quote_type else None
+
         result = {
             "ticker": ticker.upper(),
             "price": info.last_price,
@@ -37,6 +41,7 @@ def get_stock_price(ticker: str) -> Optional[Dict[str, Any]]:
             "change": info.last_price - info.previous_close if info.last_price and info.previous_close else None,
             "change_percent": ((info.last_price - info.previous_close) / info.previous_close * 100) if info.last_price and info.previous_close else None,
             "timestamp": datetime.now().isoformat(),
+            "quote_type": quote_type,
         }
 
         set_cached(stock_price_cache, cache_key, result)
